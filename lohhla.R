@@ -1,185 +1,162 @@
-I'll provide a comprehensive wrapper script for the LOHHLA module that addresses the requirements and incorporates the specified functions. I'll use three quote brackets as requested:
+I'll help you create a comprehensive wrapper script for the LOH-HLA analysis. Based on the context and requirements, here's a detailed implementation:
 
 ```R
 #!/usr/bin/env Rscript
 
-<<<
-# LOHHLA (Loss of Heterozygosity in Human Leukocyte Antigen) Wrapper Script
-
-# Load required libraries
 library(optparse)
+library(parallel)
 
-# Define custom functions for missing implementations
-PasteVector <- function(vec, collapse = ",") {
-  paste(vec, collapse = collapse)
-}
-
-dont.count.twice <- function(events) {
-  # Placeholder implementation to prevent double counting of events
-  unique(events)
-}
-
-getMisMatchPositionsPairwiseAlignment <- function(reads, ref) {
-  # Placeholder for mismatch position detection
-  # This would typically involve comparing read sequences to reference
-  mismatches <- sapply(reads, function(read) {
-    sum(read != ref)
-  })
-  return(mismatches)
-}
-
-getUniqMapReads <- function(reads, threshold = 1) {
-  # Return reads that map uniquely based on a mapping quality threshold
-  reads[reads$mapping_quality >= threshold]
-}
-
-t.test.NA <- function(x, y = NULL, na.rm = TRUE) {
-  # Custom t-test that handles NA values
-  if (na.rm) {
-    x <- x[!is.na(x)]
-    if (!is.null(y)) y <- y[!is.na(y)]
-  }
-  t.test(x, y)
-}
-
-# Define command-line options
+# Define option list matching LOHHLAscript.R parameters
 option_list <- list(
-  make_option(c("-b", "--bam_list"), 
-              type = "character", 
-              help = "Path to txt file containing list of BAM file paths"),
-  
-  make_option(c("-h", "--hla_list"), 
-              type = "character", 
-              help = "Path to txt file containing list of patient HLA file paths"),
-  
-  make_option(c("-o", "--output_dir"), 
-              type = "character", 
-              default = "./lohhla_output", 
-              help = "Output directory for analysis results [default: %default]"),
-  
-  make_option(c("-p", "--plot_intermediate"), 
-              action = "store_true", 
-              default = FALSE, 
-              help = "Plot intermediate results [default: %default]"),
-  
-  make_option(c("--kmer_length"), 
-              type = "integer", 
-              default = 35, 
-              help = "Length of k-mers for read analysis [default: %default]"),
-  
-  make_option(c("--min_mapping_quality"), 
-              type = "integer", 
-              default = 20, 
-              help = "Minimum mapping quality for reads [default: %default]"),
-  
-  make_option(c("--baf_threshold"), 
-              type = "double", 
-              default = 0.2, 
-              help = "B-Allele Frequency threshold [default: %default]"),
-  
-  make_option(c("--max_mismatches"), 
-              type = "integer", 
-              default = 2, 
-              help = "Maximum allowed mismatches in read alignment [default: %default]")
+  make_option(c("-b", "--bamList"), type="character", default=NULL,
+              help="Text file containing paths to BAM files (REQUIRED)"),
+  make_option(c("-h", "--hlaList"), type="character", default=NULL,
+              help="Text file containing paths to HLA type files (REQUIRED)"),
+  make_option(c("-o", "--outputDir"), type="character", default=getwd(),
+              help="Output directory for analysis results [default: current working directory]"),
+  make_option(c("-n", "--normalBAM"), type="character", default="FALSE",
+              help="Normal BAM file path. Can be FALSE to run without normal sample [default: FALSE]"),
+  make_option(c("-hl", "--hlaFastaLoc"), type="character", default="~/lohhla/data/hla_all.fasta",
+              help="Location of HLA FASTA file [default: %default]"),
+  make_option(c("-cn", "--copyNumLoc"), type="character", default="FALSE", 
+              help="Location of patient purity and ploidy output. Can be FALSE [default: FALSE]"),
+  make_option(c("-mc", "--minCoverage"), type="numeric", default=30,
+              help="Minimum coverage at mismatch site [default: %default]"),
+  make_option(c("-k", "--kmerSize"), type="numeric", default=50,
+              help="Size of kmers to fish with [default: %default]"),
+  make_option(c("-mm", "--numMisMatch"), type="numeric", default=1,
+              help="Number of mismatches allowed in read to map to HLA allele [default: %default]"),
+  make_option(c("--mappingStep"), type="logical", default=TRUE,
+              help="Perform mapping to HLA alleles [default: %default]"),
+  make_option(c("--fishingStep"), type="logical", default=TRUE,
+              help="Look for fished reads matching kmers [default: %default]"),
+  make_option(c("--plottingStep"), type="logical", default=TRUE,
+              help="Generate plots [default: %default]"),
+  make_option(c("--coverageStep"), type="logical", default=TRUE,
+              help="Analyze coverage differences [default: %default]"),
+  make_option(c("--cleanUp"), type="logical", default=TRUE,
+              help="Remove temporary files [default: %default]"),
+  make_option(c("--novoDir"), type="character", default="",
+              help="Path to novoalign executable [default: empty]"),
+  make_option(c("--gatkDir"), type="character", default="",
+              help="Path to GATK executable [default: empty]"),
+  make_option(c("--hlaExonLoc"), type="character", default="~/lohhla/data/hla.dat",
+              help="HLA exon boundaries for plotting [default: %default]"),
+  make_option(c("--ignoreWarnings"), type="logical", default=TRUE,
+              help="Continue running with warnings [default: %default]"),
+  make_option(c("-c", "--cores"), type="numeric", default=1,
+              help="Number of cores to use for parallel processing [default: %default]")
 )
 
-# Parse command-line arguments
-parser <- OptionParser(
-  usage = "%prog [options]", 
-  option_list = option_list,
-  description = "LOHHLA: Evaluate Loss of Heterozygosity in Human Leukocyte Antigen"
-)
-args <- parse_args(parser)
+# Parse command line arguments
+opt_parser <- OptionParser(option_list=option_list)
+opt <- parse_args(opt_parser)
 
 # Validate required inputs
-if (is.null(args$bam_list) || is.null(args$hla_list)) {
-  stop("BAM list and HLA list are required inputs.")
+if(is.null(opt$bamList) || is.null(opt$hlaList)) {
+  print_help(opt_parser)
+  stop("BAM list and HLA list are required arguments.", call.=FALSE)
 }
 
-# Main analysis function
-run_lohhla_analysis <- function(args) {
-  # Read input lists
-  bam_files <- readLines(args$bam_list)
-  hla_files <- readLines(args$hla_list)
-  
-  # Create output directory
-  dir.create(args$output_dir, recursive = TRUE, showWarnings = FALSE)
-  
-  # Document parameters
-  document.params(
-    bam_files = bam_files,
-    hla_files = hla_files,
-    output_dir = args$output_dir
-  )
-  
-  # Create k-mer file
-  kmer_file <- create.kmer.file(
-    bam_files, 
-    kmer_length = args$kmer_length
-  )
-  
-  # Get partially matching reads
-  partial_reads <- get.partially.matching.reads(
-    bam_files, 
-    kmer_file, 
-    min_mapping_quality = args$min_mapping_quality
-  )
-  
-  # Combine FASTQ files
-  combined_fastqs <- combine.fastqs(partial_reads)
-  
-  # Count events
-  event_counts <- count.events(
-    combined_fastqs, 
-    max_mismatches = args$max_mismatches
-  )
-  
-  # Calculate LOH with or without B-Allele Frequency
-  if (!is.null(args$baf_threshold)) {
-    loh_result <- funCalcN_withBAF(
-      event_counts, 
-      baf_threshold = args$baf_threshold
-    )
-  } else {
-    loh_result <- funCalcN_withoutBAF(event_counts)
-  }
-  
-  # Optional plotting
-  if (args$plot_intermediate) {
-    # Placeholder for plotting intermediate results
-    pdf(file.path(args$output_dir, "intermediate_results.pdf"))
-    plot(loh_result)
-    dev.off()
-  }
-  
-  return(loh_result)
+# Read input files
+bam_files <- readLines(opt$bamList)
+hla_files <- readLines(opt$hlaList)
+
+# Validate input lists match
+if(length(bam_files) != length(hla_files)) {
+  stop("Number of BAM files must match number of HLA files.")
 }
 
-# Execute analysis
-result <- run_lohhla_analysis(args)
+# Function to run LOHHLAscript for each sample
+run_lohhla <- function(bam_file, hla_file, opt) {
+  # Construct command dynamically
+  cmd_args <- c(
+    "--patientId", basename(bam_file),
+    "--outputDir", opt$outputDir,
+    "--normalBAMfile", opt$normalBAM,
+    "--tumorBAMfile", bam_file,
+    "--hlaPath", hla_file,
+    "--HLAfastaLoc", opt$hlaFastaLoc,
+    "--CopyNumLoc", opt$copyNumLoc,
+    "--minCoverageFilter", opt$minCoverage,
+    "--kmerSize", opt$kmerSize,
+    "--numMisMatch", opt$numMisMatch,
+    "--mappingStep", opt$mappingStep,
+    "--fishingStep", opt$fishingStep,
+    "--plottingStep", opt$plottingStep,
+    "--coverageStep", opt$coverageStep,
+    "--cleanUp", opt$cleanUp,
+    "--novoDir", opt$novoDir,
+    "--gatkDir", opt$gatkDir,
+    "--HLAexonLoc", opt$hlaExonLoc,
+    "--ignoreWarnings", opt$ignoreWarnings
+  )
+  
+  # Run LOHHLAscript
+  system2("Rscript", args = c("LOHHLAscript.R", cmd_args))
+}
 
-# Save results
-saveRDS(result, file.path(args$output_dir, "lohhla_results.rds"))
->>>
+# Parallel execution
+mclapply(seq_along(bam_files), function(i) {
+  run_lohhla(bam_files[i], hla_files[i], opt)
+}, mc.cores = opt$cores)
 ```
 
-Example R command to run the wrapper script:
+And here's a corresponding README.md:
+
+```markdown
+# LOH-HLA Wrapper Script
+
+## Overview
+This wrapper script runs Loss of Heterozygosity (LOH) analysis on HLA regions for multiple samples.
+
+## Usage
 ```bash
-Rscript lohhla_wrapper.R \
-  -b bam_file_list.txt \
-  -h hla_file_list.txt \
-  -o ./output_directory \
-  -p \
-  --kmer_length 40 \
-  --min_mapping_quality 25 \
-  --baf_threshold 0.3
+Rscript lohhla_wrapper.R -b bam_list.txt -h hla_list.txt [options]
 ```
 
-Key improvements in this version:
-1. Implemented placeholder functions for the missing functions
-2. Added comprehensive error handling
-3. Included optional plotting functionality
-4. Provided detailed command-line options
-5. Maintained the core workflow for LOHHLA analysis
+## Required Arguments
+- `-b, --bamList`: Text file with paths to tumor BAM files
+- `-h, --hlaList`: Text file with paths to corresponding HLA type files
 
-Note: The placeholder implementations for missing functions should be replaced with actual implementations or imported from the appropriate library.
+## Optional Arguments
+### Input/Output
+- `-o, --outputDir`: Output directory [default: current working directory]
+- `-n, --normalBAM`: Normal BAM file path [default: FALSE]
+
+### HLA Analysis Parameters
+- `-hl, --hlaFastaLoc`: HLA FASTA file location
+- `-mc, --minCoverage`: Minimum coverage at mismatch site [default: 30]
+- `-k, --kmerSize`: K-mer size for fishing [default: 50]
+- `-mm, --numMisMatch`: Allowed mismatches in read mapping [default: 1]
+
+### Analysis Steps
+- `--mappingStep`: Perform mapping to HLA alleles [default: TRUE]
+- `--fishingStep`: Look for fished reads [default: TRUE]
+- `--plottingStep`: Generate plots [default: TRUE]
+- `--coverageStep`: Analyze coverage differences [default: TRUE]
+
+### Utility Options
+- `--cleanUp`: Remove temporary files [default: TRUE]
+- `--ignoreWarnings`: Continue running with warnings [default: TRUE]
+- `-c, --cores`: Number of parallel cores [default: 1]
+
+### Tool Paths
+- `--novoDir`: Path to novoalign executable
+- `--gatkDir`: Path to GATK executable
+- `--hlaExonLoc`: HLA exon boundaries file
+```
+
+Example command line:
+```bash
+Rscript lohhla_wrapper.R -b tumor_bams.txt -h hla_types.txt -o /path/to/output -c 4
+```
+
+This wrapper script:
+1. Matches all parameters from the original LOHHLAscript.R
+2. Allows parallel processing of multiple samples
+3. Validates input files
+4. Dynamically constructs command for each sample
+5. Provides comprehensive help and documentation
+
+Note: Ensure LOHHLAscript.R is in the same directory or provide full path.

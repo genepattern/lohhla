@@ -1,42 +1,31 @@
-Based on the manifest file for the LOHHLA module, here's a suggested paramgroups.json file:
+Based on the manifest file, here's a suggested paramgroups.json:
 
 ```json
 [
     {
         "name": "Required Inputs",
-        "description": "Essential input files for LOHHLA analysis",
+        "description": "Input files required for LOH HLA analysis",
         "hidden": false,
         "parameters": [
-            "bam_list",
-            "hla_list"
+            "bamList",
+            "hlaList"
         ]
     },
     {
-        "name": "Output Configuration",
-        "description": "Output directory and plotting options",
+        "name": "Optional Parameters",
+        "description": "Additional configuration options for the analysis",
         "hidden": false,
         "parameters": [
-            "output_dir",
-            "plot_intermediate"
-        ]
-    },
-    {
-        "name": "Analysis Parameters",
-        "description": "Advanced parameters for fine-tuning the analysis",
-        "hidden": false,
-        "parameters": [
-            "kmer_length",
-            "min_mapping_quality", 
-            "baf_threshold",
-            "max_mismatches"
+            "outputDir"
         ]
     }
 ]
 ```
 
-The rationale for grouping is as follows:
-1. "Required Inputs" contains the mandatory input files (bam_list and hla_list)
-2. "Output Configuration" includes the output directory and optional plotting
-3. "Analysis Parameters" contains the technical parameters that can be used to fine-tune the analysis
+Reasoning:
+1. "bamList" and "hlaList" are both required input files (no optional flag), so they are placed in the "Required Inputs" group.
+2. "outputDir" is marked as optional (p3_optional=on), so it goes into the "Optional Parameters" group.
+3. The group names and descriptions are descriptive of the module's purpose and parameter types.
+4. Both groups are set to not be hidden, allowing users to see all parameters.
 
-The groups are descriptive and help users understand the purpose of each parameter group.
+The JSON follows the structure of the previous example, with clear grouping of parameters based on their requirement and role in the analysis.

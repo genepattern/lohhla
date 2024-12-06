@@ -1,0 +1,42 @@
+Based on the manifest file for the LOHHLA module, here's a suggested paramgroups.json file:
+
+```json
+[
+    {
+        "name": "Required Inputs",
+        "description": "Essential input files for LOHHLA analysis",
+        "hidden": false,
+        "parameters": [
+            "bam_list",
+            "hla_list"
+        ]
+    },
+    {
+        "name": "Output Configuration",
+        "description": "Output directory and plotting options",
+        "hidden": false,
+        "parameters": [
+            "output_dir",
+            "plot_intermediate"
+        ]
+    },
+    {
+        "name": "Analysis Parameters",
+        "description": "Advanced parameters for fine-tuning the analysis",
+        "hidden": false,
+        "parameters": [
+            "kmer_length",
+            "min_mapping_quality", 
+            "baf_threshold",
+            "max_mismatches"
+        ]
+    }
+]
+```
+
+The rationale for grouping is as follows:
+1. "Required Inputs" contains the mandatory input files (bam_list and hla_list)
+2. "Output Configuration" includes the output directory and optional plotting
+3. "Analysis Parameters" contains the technical parameters that can be used to fine-tune the analysis
+
+The groups are descriptive and help users understand the purpose of each parameter group.
